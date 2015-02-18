@@ -46,7 +46,7 @@
 void
 usage()
 {
-    printf("Usage: %s [-IO pcap_dump] [-d dev]"
+    printf("Usage: %s [-IO pcap_dump] [-d dev] [-F filtertxt]"
 #ifdef WITH_OPENSSL
            " [-k keyfile]"
 #endif
@@ -56,6 +56,7 @@ usage()
            "    -d  Use this capture device instead of default\n"
            "    -I  Read captured data from pcap file\n"
            "    -O  Write captured data to pcap file\n"
+           "    -F  Set display filter on startup\n"
 #ifdef WITH_OPENSSL
            "    -k  RSA private keyfile to decrypt captured packets\n"
 #endif
@@ -94,7 +95,7 @@ main(int argc, char* argv[])
 
     // Parse command line arguments
     opterr = 0;
-    char *options = "hvd:I:O:pqtW:k:";
+    char *options = "hvd:I:O:pqtW:k:F:";
     while ((opt = getopt(argc, argv, options)) != -1) {
         switch (opt) {
         case 'h':
@@ -114,6 +115,9 @@ main(int argc, char* argv[])
             break;
         case 'k':
             set_option_value("capture.keyfile", optarg);
+            break;
+        case 'F':
+            set_option_value("cl.filter", optarg);
             break;
             // Dark options for dummy ones
         case 'p':
