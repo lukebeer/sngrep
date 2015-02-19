@@ -146,9 +146,9 @@ main(int argc, char* argv[])
 #endif
 
     // Check if given argument is a file
-    if (argc == 2 && (access(argv[1], F_OK) == 0)) {
+    if (access(argv[optind], F_OK) == 0) {
         // Show offline mode in ui
-        set_option_value("capture.infile", argv[1]);
+        set_option_value("capture.infile", argv[optind++]);
     }
 
     // If we have an input file, load it
