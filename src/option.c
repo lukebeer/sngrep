@@ -60,6 +60,10 @@ init_options()
     set_option_value("syntax.branch", "off");
     set_option_value("syntax.tag", "off");
 
+    // Matching options
+    set_option_value("match.ignorecase", "off");
+    set_option_value("match.invert", "off");
+
     // Add Call list column options
     set_option_value("cl.column0", "time");
     set_option_value("cl.column0", "sipfrom");

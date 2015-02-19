@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <pthread.h>
+#include <regex.h>
 #include "sip.h"
 #include "option.h"
 #include "capture.h"
@@ -266,7 +267,7 @@ sip_load_message(struct timeval tv, struct in_addr src, u_short sport, struct in
         }
 
         // If there is a match filter check if the message matches the expression
-        if ((match_expr = get_option_value("capture.match"))) {
+        if ((match_expr = get_option_value("match.expression"))) {
             if (!msg_match_expression(msg, match_expr)) {
                 return NULL;
             }
@@ -612,11 +613,35 @@ msg_parse_payload(sip_msg_t *msg, const char *payload)
 int
 msg_match_expression(sip_msg_t *msg, const char *match_expr)
 {
+    regex_t regex;
+    int cflags = REG_EXTENDED;
+    int ret;
+
     // Sanity check
     if (!msg || !msg->payload)
         return 0;
 
-    return (strstr(msg->payload, match_expr) != NULL);
+    // Set regexp flags
+    if (is_option_enabled("match.ignorecase"))
+        cflags |= REG_ICASE;
+
+    // Check the expresion is a compilable regexp
+    if (regcomp(&regex, match_expr, cflags) != 0) {
+        return 0;
+    }
+
+    // Check if payload matches the given expresion
+    if (regexec(&regex, msg->payload, 0, NULL, 0) == 0) {
+        ret = is_option_disabled("match.invert");
+    } else {
+        ret = is_option_enabled("match.invert");
+    }
+
+
+
+    // Free the expression memory
+    regfree(&regex);
+    return ret;
 }
 
 int

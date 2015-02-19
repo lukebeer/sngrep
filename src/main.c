@@ -52,10 +52,12 @@ usage()
 #endif
            " [<match expression>][<bpf filter>|<pcap_dump>]\n\n"
            "    -h  This usage\n"
-           "    -v  Version information\n"
+           "    -V  Version information\n"
            "    -d  Use this capture device instead of default\n"
            "    -I  Read captured data from pcap file\n"
            "    -O  Write captured data to pcap file\n"
+           "    -i  Make match expression case insensitive\n"
+           "    -v  Invert match expression\n"
 #ifdef WITH_OPENSSL
            "    -k  RSA private keyfile to decrypt captured packets\n"
 #endif
@@ -96,13 +98,13 @@ main(int argc, char* argv[])
 
     // Parse command line arguments
     opterr = 0;
-    char *options = "hvd:I:O:pqtW:k:";
+    char *options = "hVd:I:O:pqtW:k:vi";
     while ((opt = getopt(argc, argv, options)) != -1) {
         switch (opt) {
         case 'h':
             usage();
             return 0;
-        case 'v':
+        case 'V':
             version();
             return 0;
         case 'd':
@@ -116,6 +118,12 @@ main(int argc, char* argv[])
             break;
         case 'k':
             set_option_value("capture.keyfile", optarg);
+            break;
+        case 'i':
+            toggle_option("match.ignorecase");
+            break;
+        case 'v':
+            toggle_option("match.invert");
             break;
             // Dark options for dummy ones
         case 'p':
@@ -194,7 +202,7 @@ main(int argc, char* argv[])
 
         // Set the capture filter
         set_option_value("capture.filter", bpf);
-        set_option_value("capture.match", match_expr);
+        set_option_value("match.expression", match_expr);
         set_bpf_filter(bpf);
     }
 
