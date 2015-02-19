@@ -50,22 +50,18 @@ pcap_t *handle;
 pthread_t capture_t;
 //! Cache for DNS lookups
 struct dns_cache dnscache;
+//! FIXME Netmask of our sniffing device
+bpf_u_int32 mask;
 
 int
 capture_online()
 {
     //! Device to sniff on
     const char *dev = get_option_value("capture.device");
-    //! The filter expression
-    const char *filter_exp = get_option_value("capture.filter");
     //! Output PCAP File
     const char *outfile = get_option_value("capture.outfile");
     //! Error string
     char errbuf[PCAP_ERRBUF_SIZE];
-    //! The compiled filter expression
-    struct bpf_program fp;
-    //! Netmask of our sniffing device
-    bpf_u_int32 mask;
     //! The IP of our sniffing device
     bpf_u_int32 net;
 
@@ -83,16 +79,13 @@ capture_online()
         return 2;
     }
 
-    // Validate and set filter expresion
-    if (filter_exp) {
-        if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
-            fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-            return 2;
-        }
-        if (pcap_setfilter(handle, &fp) == -1) {
-            fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-            return 2;
-        }
+    // Get datalink to parse packets correctly
+    linktype = pcap_datalink(handle);
+
+    // Check linktypes sngrep knowns before start parsing packets
+    if (datalink_size(linktype) == -1) {
+        fprintf(stderr, "Unable to handle linktype %d\n", linktype);
+        return 3;
     }
 
     // If requested store packets in a dump file
@@ -102,15 +95,6 @@ capture_online()
                     pcap_geterr(handle));
             return 2;
         }
-    }
-
-    // Get datalink to parse packets correctly
-    linktype = pcap_datalink(handle);
-
-    // Check linktypes sngrep knowns before start parsing packets
-    if (datalink_size(linktype) == -1) {
-        fprintf(stderr, "Unable to handle linktype %d\n", linktype);
-        return 3;
     }
 
     return 0;
@@ -134,42 +118,22 @@ void
 capture_thread(void *none)
 {
     // Parse available packets
-    pcap_loop(handle, -1, parse_packet, (u_char*) "Online");
+    pcap_loop(handle, -1, parse_packet, 0);
     pcap_close(handle);
 }
 
 int
 capture_offline()
 {
-    //! The filter expression
-    const char *filter_exp = get_option_value("capture.filter");
     // PCAP input file name
     const char *infile = get_option_value("capture.infile");
     // Error text (in case of file open error)
     char errbuf[PCAP_ERRBUF_SIZE];
-    // The header that pcap gives us
-    struct pcap_pkthdr header;
-    // The actual packet
-    const u_char *packet;
-    //! The compiled filter expression
-    struct bpf_program fp;
 
     // Open PCAP file
     if ((handle = pcap_open_offline(infile, errbuf)) == NULL) {
         fprintf(stderr, "Couldn't open pcap file %s: %s\n", infile, errbuf);
         return 1;
-    }
-
-    // Validate and set filter expresion
-    if (filter_exp) {
-        if (pcap_compile(handle, &fp, filter_exp, 0, 0) == -1) {
-            fprintf(stderr, "Couldn't parse filter %s: %s\n", filter_exp, pcap_geterr(handle));
-            return 2;
-        }
-        if (pcap_setfilter(handle, &fp) == -1) {
-            fprintf(stderr, "Couldn't install filter %s: %s\n", filter_exp, pcap_geterr(handle));
-            return 2;
-        }
     }
 
     // Get datalink to parse packets correctly
@@ -181,13 +145,38 @@ capture_offline()
         return 3;
     }
 
-    // Loop through packets
-    while ((packet = pcap_next(handle, &header))) {
-        // Parse packets
-        parse_packet((u_char*) "Offline", &header, packet);
+    return 0;
+}
+
+int
+check_valid_bpf_filter(char *filter)
+{
+    //! The compiled filter expression
+    struct bpf_program fp;
+    return (pcap_compile(handle, &fp, filter, 0, mask) == -1);
+}
+
+int
+set_bpf_filter(char *filter)
+{
+    //! The compiled filter expression
+    struct bpf_program fp;
+
+    if (pcap_compile(handle, &fp, filter, 0, mask) == -1) {
+        return 1;
+    }
+
+    if (pcap_setfilter(handle, &fp) == -1) {
+        return 1;
     }
 
     return 0;
+}
+
+char *
+capture_last_error()
+{
+    return pcap_geterr(handle);
 }
 
 void
@@ -219,7 +208,7 @@ parse_packet(u_char *mode, const struct pcap_pkthdr *header, const u_char *packe
     // Check if we have reached capture limit
     int limit = get_option_int_value("capture.limit");
     if (limit && sip_calls_count() >= limit) {
-        return ;
+        return;
     }
 
     // Store this packets in output file
@@ -328,9 +317,7 @@ parse_packet(u_char *mode, const struct pcap_pkthdr *header, const u_char *packe
     memcpy(msg->pcap_packet, packet, size_packet);
 
     // Refresh current UI in online mode
-    if (!strcasecmp((const char*) mode, "Online")) {
-        ui_new_msg_refresh(msg);
-    }
+    ui_new_msg_refresh(msg);
 }
 
 void
@@ -340,12 +327,8 @@ capture_close()
 
     //Close PCAP file
     if (handle) {
-        if(get_option_value("capture.infile")) {
-            pcap_close(handle);
-        } else {
-            pcap_breakloop(handle);
-            pthread_join(capture_t, &ret);
-        }
+        pcap_breakloop(handle);
+        pthread_join(capture_t, &ret);
     }
 
     // Close dump file
@@ -358,37 +341,37 @@ int
 datalink_size(int datalink)
 {
     // Datalink header size
-    switch(datalink) {
-        case DLT_EN10MB:
-            return 14;
-        case DLT_IEEE802:
-            return 22;
-        case DLT_LOOP:
-        case DLT_NULL:
-            return 4;
-        case DLT_SLIP:
-        case DLT_SLIP_BSDOS:
-            return 16;
-        case DLT_PPP:
-        case DLT_PPP_BSDOS:
-        case DLT_PPP_SERIAL:
-        case DLT_PPP_ETHER:
-            return 4;
-        case DLT_RAW:
-            return 0;
-        case DLT_FDDI:
-            return 21;
-        case DLT_ENC:
-            return 12;
-        case DLT_LINUX_SLL:
-            return 16;
+    switch (datalink) {
+    case DLT_EN10MB:
+        return 14;
+    case DLT_IEEE802:
+        return 22;
+    case DLT_LOOP:
+    case DLT_NULL:
+        return 4;
+    case DLT_SLIP:
+    case DLT_SLIP_BSDOS:
+        return 16;
+    case DLT_PPP:
+    case DLT_PPP_BSDOS:
+    case DLT_PPP_SERIAL:
+    case DLT_PPP_ETHER:
+        return 4;
+    case DLT_RAW:
+        return 0;
+    case DLT_FDDI:
+        return 21;
+    case DLT_ENC:
+        return 12;
+    case DLT_LINUX_SLL:
+        return 16;
 #ifdef DLT_IPNET
-        case DLT_IPNET:
-            return 24;
+    case DLT_IPNET:
+        return 24;
 #endif
-        default:
-            // Not handled datalink type
-            return -1;
+    default:
+        // Not handled datalink type
+        return -1;
     }
 
 }

@@ -50,7 +50,7 @@ usage()
 #ifdef WITH_OPENSSL
            " [-k keyfile]"
 #endif
-           " [<bpf filter>|<pcap_dump>]\n\n"
+           " [<match expression>][<bpf filter>|<pcap_dump>]\n\n"
            "    -h  This usage\n"
            "    -v  Version information\n"
            "    -d  Use this capture device instead of default\n"
@@ -59,7 +59,8 @@ usage()
 #ifdef WITH_OPENSSL
            "    -k  RSA private keyfile to decrypt captured packets\n"
 #endif
-           ,PACKAGE);
+           ,
+           PACKAGE);
 }
 
 void
@@ -83,11 +84,12 @@ int
 main(int argc, char* argv[])
 {
 
-    int ret = 0, opt;
+    int ret = 0, opt, i;
     const char *keyfile;
 
     //! BPF arguments filter
     char bpf[512];
+    char *match_expr;
 
     // Initialize configuration options
     init_options();
@@ -147,14 +149,6 @@ main(int argc, char* argv[])
     if (argc == 2 && (access(argv[1], F_OK) == 0)) {
         // Show offline mode in ui
         set_option_value("capture.infile", argv[1]);
-    } else {
-        // Build the bpf filter string
-        memset(bpf, 0, sizeof(bpf));
-        for (; optind < argc; optind++) {
-            sprintf(bpf + strlen(bpf), "%s ", argv[optind]);
-        }
-        // Set the capture filter
-        set_option_value("capture.filter", bpf);
     }
 
     // If we have an input file, load it
@@ -173,15 +167,44 @@ main(int argc, char* argv[])
             return 1;
     }
 
+    if (argv[optind]) {
+        // Build match expresion
+        match_expr = argv[optind++];
+
+        // Build the bpf filter string
+        memset(bpf, 0, sizeof(bpf));
+        for (i = optind; i < argc; i++)
+            sprintf(bpf + strlen(bpf), "%s ", argv[i]);
+
+        if (check_valid_bpf_filter(bpf) != 0) {
+            // Check if match expression is part of the filter
+            match_expr = 0;
+
+            // Build the bpf filter string
+            memset(bpf, 0, sizeof(bpf));
+            for (i = optind - 1; i < argc; i++)
+                sprintf(bpf + strlen(bpf), "%s ", argv[i]);
+
+            // Check bpf filter is valid
+            if (check_valid_bpf_filter(bpf) != 0) {
+                fprintf(stderr, "Couldn't install filter %s: %s\n", bpf, capture_last_error());
+                return 1;
+            }
+        }
+
+        // Set the capture filter
+        set_option_value("capture.filter", bpf);
+        set_option_value("capture.match", match_expr);
+        set_bpf_filter(bpf);
+    }
+
     // Initialize interface
     init_interface();
 
     // Start a capture thread for Online mode
-    if (get_option_value("capture.infile") == NULL) {
-        if (capture_launch_thread() != 0) {
-            deinit_interface();
-            return 1;
-        }
+    if (capture_launch_thread() != 0) {
+        deinit_interface();
+        return 1;
     }
 
     // This is a blocking call.

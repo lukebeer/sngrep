@@ -147,7 +147,6 @@ struct dns_cache
 int
 capture_online();
 
-
 /**
  * @brief Create a capture thread for online mode
  *
@@ -203,6 +202,24 @@ capture_close();
  */
 int
 datalink_size(int datalink);
+
+/**
+ * @brief Check if a string is a valid bpf filter
+ */
+int
+check_valid_bpf_filter(char *filter);
+
+/**
+ * @brief Apply a BPF filter to capture
+ */
+int
+set_bpf_filter(char *filter);
+
+/**
+ * @brief Return the last capture error
+ */
+char *
+capture_last_error();
 
 /**
  * @brief Open a new dumper file for capture handler

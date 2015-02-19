@@ -353,6 +353,17 @@ msg_parse_header(sip_msg_t *msg, const char *header);
 int
 msg_parse_payload(sip_msg_t *msg, const char *payload);
 
+
+/**
+ * @brief Check if Message payload matches a given expression
+ *
+ * @param msg SIP message structure
+ * @param match_expr expression to match
+ * @return 1 if message matches, 0 otherwise
+ */
+int
+msg_match_expression(sip_msg_t *msg, const char *match_expr);
+
 /**
  * @brief Check if a package is a retransmission
  *

@@ -193,6 +193,7 @@ sip_load_message(struct timeval tv, struct in_addr src, u_short sport, struct in
     sip_call_t *call;
     char *callid;
     char date[12], time[20], from_addr[80], to_addr[80];
+    const char *match_expr;
 
     // Skip messages if capture is disabled
     if (!is_option_enabled("sip.capture")) {
@@ -260,6 +261,13 @@ sip_load_message(struct timeval tv, struct in_addr src, u_short sport, struct in
                     && strncasecmp(method, "NOTIFY", 6)) {
                 // Deallocate message memory
                 sip_msg_destroy(msg);
+                return NULL;
+            }
+        }
+
+        // If there is a match filter check if the message matches the expression
+        if ((match_expr = get_option_value("capture.match"))) {
+            if (!msg_match_expression(msg, match_expr)) {
                 return NULL;
             }
         }
@@ -602,6 +610,16 @@ msg_parse_payload(sip_msg_t *msg, const char *payload)
 }
 
 int
+msg_match_expression(sip_msg_t *msg, const char *match_expr)
+{
+    // Sanity check
+    if (!msg || !msg->payload)
+        return 0;
+
+    return (strstr(msg->payload, match_expr) != NULL);
+}
+
+int
 msg_is_retrans(sip_msg_t *msg)
 {
     sip_msg_t *prev = NULL;
@@ -614,7 +632,7 @@ msg_is_retrans(sip_msg_t *msg)
     prev = msg;
 
     // Check previous messages in same call
-    while((prev = call_get_prev_msg(msg->call, prev))) {
+    while ((prev = call_get_prev_msg(msg->call, prev))) {
         // Check if the payload is exactly the same
         if (!strcasecmp(msg->payload, prev->payload)) {
             return 1;
